@@ -1,12 +1,12 @@
 import { useState, useRef, useEffect } from "react";
-import { Stage, Layer, Rect, Transformer, Circle } from "react-konva";
 import Konva from "konva";
 import { v4 as uuid } from "uuid";
 import type { StageItem } from "./types";
 import { ACTIONS } from "./constants";
-import EditableText from "./EditableText";
 
 import "./App.css";
+import Toolbar from "./components/Toolbar";
+import CanvasStage from "./components/CanvasStage";
 
 export default function App() {
   const [action, setAction] = useState(ACTIONS.SELECT);
@@ -14,7 +14,6 @@ export default function App() {
   const [fillColor, setFillColor] = useState("#000000");
   const [fontSize, setFontSize] = useState(50);
   const [isStageFocused, setIsStageFocused] = useState(true);
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   const isPainting = useRef(false);
   const stageRef = useRef<Konva.Stage | null>(null);
@@ -25,6 +24,18 @@ export default function App() {
 
   const defaultSize = 100;
   const minSize = 100;
+
+  // const {} = useStageHandlers({
+  //   action,
+  //   fillColor,
+  //   fontSize,
+  //   isStageFocused,
+  //   setAction,
+  //   setItems,
+  //   setSelectedIds,
+  //   transformerRef,
+  //   stageRef,
+  // });
 
   const onPointerDown = () => {
     if (action === ACTIONS.SELECT) return;
@@ -138,35 +149,16 @@ export default function App() {
     setItems((prev) => prev.map((it) => (it.id === id ? { ...it, x, y } : it)));
   };
 
-  const onClick = (e: Konva.KonvaEventObject<PointerEvent>) => {
+  const handleShapeClick = (e: Konva.KonvaEventObject<PointerEvent>) => {
     if (action !== ACTIONS.SELECT) return;
     const target = e.currentTarget as Konva.Shape;
-    const id = target.id();
     const tr = transformerRef.current;
+    if (tr) tr.nodes([target]);
 
-    if (!tr || !id) return;
-
-    if (e.evt.shiftKey) {
-      setSelectedIds((prev) => (prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]));
-    } else {
-      setSelectedIds([id]);
-    }
     const fillValue = target.fill?.();
     setFillColor(typeof fillValue === "string" ? fillValue : "#000000");
     setFontSize(target instanceof Konva.Text ? target.fontSize() : 50);
   };
-
-  useEffect(() => {
-    const stage = stageRef.current;
-    const tr = transformerRef.current;
-    if (!stage || !tr) return;
-
-    const selectedNodes = selectedIds
-      .map((id) => stage.findOne(`#${id}`))
-      .filter(Boolean) as Konva.Node[];
-    tr.nodes(selectedNodes);
-    tr.getLayer()?.batchDraw();
-  }, [selectedIds]);
 
   const attachTransformer = (id: string) => {
     const stage = stageRef.current;
@@ -190,6 +182,7 @@ export default function App() {
     );
   };
 
+  //key delete move
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!isStageFocused) return;
@@ -200,62 +193,44 @@ export default function App() {
 
       if (isTyping) return;
 
-      if (e.key === "Backspace" || e.key === "Delete") {
-        const tr = transformerRef.current;
-        if (!tr) return;
-
-        const selectedNodes = tr.nodes();
-        if (selectedNodes.length === 0) return;
-
-        const node = selectedNodes[0];
-        const id = node.id();
-        if (!id) return;
-
-        setItems((prev) => prev.filter((item) => item.id !== id));
-
-        tr.nodes([]);
-        tr.getLayer()?.batchDraw();
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isStageFocused]);
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (!isStageFocused) return;
-
       const tr = transformerRef.current;
       if (!tr) return;
 
       const selectedNodes = tr.nodes();
       if (selectedNodes.length === 0) return;
       const node = selectedNodes[0];
+      const id = node.id();
       const step = 1;
 
       switch (e.key) {
+        case "Delete":
+        case "Backspace":
+          setItems((prev) => prev.filter((item) => item.id !== id));
+          tr.nodes([]);
+          tr.getLayer()?.batchDraw();
+          break;
         case "ArrowUp":
           node.y(node.y() - step);
           setItems((prev) =>
-            prev.map((item) => (item.id === node.id() ? { ...item, y: item.y - step } : item))
+            prev.map((item) => (item.id === id ? { ...item, y: item.y - step } : item))
           );
           break;
         case "ArrowDown":
           node.y(node.y() + step);
           setItems((prev) =>
-            prev.map((item) => (item.id === node.id() ? { ...item, y: item.y + step } : item))
+            prev.map((item) => (item.id === id ? { ...item, y: item.y + step } : item))
           );
           break;
         case "ArrowLeft":
           node.x(node.x() - step);
           setItems((prev) =>
-            prev.map((item) => (item.id === node.id() ? { ...item, x: item.x - step } : item))
+            prev.map((item) => (item.id === id ? { ...item, x: item.x - step } : item))
           );
           break;
         case "ArrowRight":
           node.x(node.x() + step);
           setItems((prev) =>
-            prev.map((item) => (item.id === node.id() ? { ...item, x: item.x + step } : item))
+            prev.map((item) => (item.id === id ? { ...item, x: item.x + step } : item))
           );
           break;
         default:
@@ -354,89 +329,26 @@ export default function App() {
 
   return (
     <>
-      <div style={{ position: "fixed", zIndex: 10, padding: 12 }}>
-        <button onClick={() => setAction(ACTIONS.SELECT)}>select</button>
-        <button onClick={() => setAction(ACTIONS.RECTANGLE)}>+ 矩形</button>
-        <button onClick={() => setAction(ACTIONS.CIRCLE)}>+ 円</button>
-        <button onClick={() => setAction(ACTIONS.TEXT)}>+ Text</button>
-        <button>
-          fill
-          <input type="color" value={fillColor} onChange={(e) => changeColor(e)} />
-        </button>
-        <button>
-          fontsize
-          <input value={fontSize} onChange={(e) => changeFontSize(e)} />
-        </button>
-      </div>
-
-      <Stage
-        width={window.innerWidth}
-        height={window.innerHeight}
-        ref={stageRef}
-        tabIndex={0}
+      <Toolbar
+        fillColor={fillColor}
+        fontSize={fontSize}
+        onActionChange={setAction}
+        onFillChange={changeColor}
+        onFontSizeChange={changeFontSize}
+      />
+      <CanvasStage
+        stageRef={stageRef}
+        transformerRef={transformerRef}
+        setIsStageFocused={setIsStageFocused}
+        items={items}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
-        onFocus={() => setIsStageFocused(true)}
-        onBlur={() => setIsStageFocused(false)}
-      >
-        <Layer>
-          <Rect
-            x={0}
-            y={0}
-            height={window.innerHeight}
-            width={window.innerWidth}
-            fill={"#ffffff"}
-            onClick={() => {
-              setSelectedIds([]);
-            }}
-          />
-          {items.map((item) => {
-            if (item.type === "rect")
-              return (
-                <Rect
-                  key={item.id}
-                  {...item}
-                  fill={item.fillColor}
-                  draggable={isDraggable}
-                  onDragEnd={(e) => {
-                    handleDragEnd(e, item.id);
-                  }}
-                  onClick={onClick}
-                />
-              );
-            if (item.type === "circle")
-              return (
-                <Circle
-                  key={item.id}
-                  {...item}
-                  fill={item.fillColor}
-                  draggable={isDraggable}
-                  onDragEnd={(e) => {
-                    handleDragEnd(e, item.id);
-                  }}
-                  onClick={onClick}
-                />
-              );
-            if (item.type === "text")
-              return (
-                <EditableText
-                  key={item.id}
-                  {...item}
-                  fill={item.fillColor}
-                  fontSize={item.fontSize}
-                  draggable={isDraggable}
-                  onDragEnd={(e) => {
-                    handleDragEnd(e, item.id);
-                  }}
-                  onClick={onClick}
-                  onChangeText={updateText}
-                />
-              );
-          })}
-          <Transformer ref={transformerRef} />
-        </Layer>
-      </Stage>
+        isDraggable={isDraggable}
+        onShapeDragEnd={handleDragEnd}
+        onShapeClick={handleShapeClick}
+        updateText={updateText}
+      />
     </>
   );
 }

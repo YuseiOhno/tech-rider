@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from "react";
-import type { EditableText } from "./types";
+import type { EditableText } from "../types";
 import { Text } from "react-konva";
 import TextEditing from "./TextEditing";
 import type Konva from "konva";
@@ -11,14 +11,18 @@ export default function EditableText({
   onDragEnd,
   onClick,
   onChangeText,
+  transformerRef,
   ...props
 }: EditableText) {
   const [isEditing, setIsEditing] = useState(false);
   const textRef = useRef<Konva.Text>(null);
 
   const handleTextDblClick = useCallback(() => {
-    const transformer = textRef.current?.getLayer()?.findOne("Transformer") as Konva.Transformer;
-    if (transformer) transformer.nodes([]);
+    const transformer = transformerRef.current;
+    if (transformer) {
+      transformer.nodes([]);
+      transformer.getLayer()?.batchDraw();
+    }
     setIsEditing(true);
   }, []);
 
@@ -32,7 +36,6 @@ export default function EditableText({
     const newWidth = Math.max(20, node.width() * scaleX);
     const newFontSize = Math.max(12, Math.floor(node.fontSize() * scaleY));
 
-    // 見た目サイズを維持してスケールリセット
     node.fontSize(newFontSize);
     node.width(newWidth);
     node.scaleX(1);

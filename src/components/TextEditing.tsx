@@ -1,6 +1,6 @@
 import { Html } from "react-konva-utils";
 import { useLayoutEffect, useRef } from "react";
-import type { TextEditing } from "./types";
+import type { TextEditing } from "../types";
 
 export default function TextEditing({ textNode, onChange, onClose }: TextEditing) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -19,10 +19,11 @@ export default function TextEditing({ textNode, onChange, onClose }: TextEditing
       };
       textarea.addEventListener("blur", handleBlur);
 
-      return () => textarea.removeEventListener("blur", handleBlur);
+      return () => {
+        cancelAnimationFrame(id);
+        textarea.removeEventListener("blur", handleBlur);
+      };
     });
-
-    return () => cancelAnimationFrame(id);
   }, [textNode, onChange, onClose]);
 
   return (
@@ -45,6 +46,7 @@ export default function TextEditing({ textNode, onChange, onClose }: TextEditing
           background: "none",
           outline: "none",
           resize: "none",
+          overflow: "hidden",
           transformOrigin: "left top",
           width: `${textNode.width()}px`,
           height: `${textNode.height()}px`,
