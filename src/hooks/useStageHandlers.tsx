@@ -1,0 +1,276 @@
+import { useRef, useEffect } from "react";
+import Konva from "konva";
+import { v4 as uuid } from "uuid";
+import { ACTIONS } from "../constants";
+import type { UseStageHandlersProps } from "../types";
+
+export function useStageHandlers({
+  action,
+  items,
+  setItems,
+  setAction,
+  setFillColor,
+  setFontSize,
+  fillColor,
+  fontSize,
+  isStageFocused,
+  stageRef,
+  transformerRef,
+}: UseStageHandlersProps) {
+  const isPainting = useRef(false);
+  const currentShapeId = useRef<string | null>(null);
+
+  const defaultSize = 100;
+  const minSize = 100;
+
+  //描画開始
+  const onPointerDown = () => {
+    if (action === ACTIONS.SELECT) return;
+
+    const stage = stageRef.current;
+    if (!stage) return;
+    const pos = stage.getPointerPosition();
+    if (!pos) return;
+    const { x, y } = pos;
+
+    const id = uuid();
+    currentShapeId.current = id;
+    isPainting.current = true;
+
+    if (action === ACTIONS.RECTANGLE) {
+      setItems((prev) => [
+        ...prev,
+        {
+          id,
+          type: "rect",
+          x,
+          y,
+          width: defaultSize,
+          height: defaultSize,
+          fillColor,
+        },
+      ]);
+      requestAnimationFrame(() => attachTransformer(id));
+      return;
+    }
+
+    if (action === ACTIONS.CIRCLE) {
+      setItems((prev) => [
+        ...prev,
+        {
+          id,
+          type: "circle",
+          x,
+          y,
+          radius: defaultSize / 2,
+          fillColor,
+        },
+      ]);
+      requestAnimationFrame(() => attachTransformer(id));
+      return;
+    }
+
+    const count = items.filter((item) => item.type === "text").length;
+
+    if (action === ACTIONS.TEXT) {
+      setItems((prev) => [
+        ...prev,
+        {
+          id,
+          type: "text",
+          text: `Text ${count + 1}`,
+          fontSize,
+          fillColor,
+          x,
+          y,
+        },
+      ]);
+      requestAnimationFrame(() => attachTransformer(id));
+      return;
+    }
+  };
+
+  //ドラッグ中にサイズ変更
+  const onPointerMove = () => {
+    if (action === ACTIONS.SELECT || !isPainting.current) return;
+
+    const stage = stageRef.current;
+    if (!stage) return;
+    const pos = stage.getPointerPosition();
+    if (!pos) return;
+    const { x, y } = pos;
+
+    if (action === ACTIONS.RECTANGLE) {
+      setItems((prev) =>
+        prev.map((item) => {
+          if (item.id !== currentShapeId.current || item.type !== "rect") return item;
+
+          const newWidth = minSize + (x - item.x);
+          const newHeight = minSize + (y - item.y);
+
+          return { ...item, width: newWidth, height: newHeight };
+        })
+      );
+    }
+
+    if (action === ACTIONS.CIRCLE) {
+      setItems((prev) =>
+        prev.map((item) => {
+          if (item.id !== currentShapeId.current || item.type !== "circle") return item;
+
+          const newRadius = minSize / 2 + Math.hypot(x - item.x, y - item.y) / 2;
+
+          return { ...item, radius: newRadius };
+        })
+      );
+    }
+  };
+
+  //ドラッグ終了
+  const onPointerUp = () => {
+    isPainting.current = false;
+    setAction(ACTIONS.SELECT);
+  };
+
+  //Transformer付与
+  const attachTransformer = (id: string) => {
+    const stage = stageRef.current;
+    const tr = transformerRef.current;
+    if (!stage || !tr) return;
+
+    const shape = stage.findOne(`#${id}`);
+    if (shape) {
+      tr.nodes([shape]);
+      stage.batchDraw();
+    }
+  };
+
+  //ドラッグ終了で位置更新
+  const handleDragEnd = (e: Konva.KonvaEventObject<DragEvent>, id: string) => {
+    const { x, y } = e.target.position();
+    setItems((prev) => prev.map((it) => (it.id === id ? { ...it, x, y } : it)));
+  };
+
+  //クリック選択、対象のfillやfontsizeを取得
+  const onShapeClick = (e: Konva.KonvaEventObject<PointerEvent>) => {
+    if (action !== ACTIONS.SELECT) return;
+    const target = e.currentTarget as Konva.Shape;
+    const tr = transformerRef.current;
+    if (tr) tr.nodes([target]);
+
+    const fillValue = target.fill?.();
+    setFillColor(typeof fillValue === "string" ? fillValue : "#000000");
+    setFontSize(target instanceof Konva.Text ? target.fontSize() : 50);
+  };
+
+  //矢印キーで移動、Backspaceで削除
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!isStageFocused) return;
+
+      const target = e.target as HTMLElement;
+      const tagName = target.tagName.toLowerCase();
+      const isTyping = tagName === "input" || tagName === "textarea" || target.isContentEditable;
+
+      if (isTyping) return;
+
+      const tr = transformerRef.current;
+      if (!tr) return;
+
+      const selectedNodes = tr.nodes();
+      if (selectedNodes.length === 0) return;
+      const node = selectedNodes[0];
+      const id = node.id();
+      const step = 1;
+
+      switch (e.key) {
+        case "Delete":
+        case "Backspace":
+          setItems((prev) => prev.filter((item) => item.id !== id));
+          tr.nodes([]);
+          tr.getLayer()?.batchDraw();
+          break;
+        case "ArrowUp":
+          node.y(node.y() - step);
+          setItems((prev) =>
+            prev.map((item) => (item.id === id ? { ...item, y: item.y - step } : item))
+          );
+          break;
+        case "ArrowDown":
+          node.y(node.y() + step);
+          setItems((prev) =>
+            prev.map((item) => (item.id === id ? { ...item, y: item.y + step } : item))
+          );
+          break;
+        case "ArrowLeft":
+          node.x(node.x() - step);
+          setItems((prev) =>
+            prev.map((item) => (item.id === id ? { ...item, x: item.x - step } : item))
+          );
+          break;
+        case "ArrowRight":
+          node.x(node.x() + step);
+          setItems((prev) =>
+            prev.map((item) => (item.id === id ? { ...item, x: item.x + step } : item))
+          );
+          break;
+        default:
+          return;
+      }
+      node.getLayer()?.batchDraw();
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isStageFocused]);
+
+  //テキスト更新
+  const updateText = (
+    newText: string,
+    id: string,
+    updates?: { width?: number; fontSize?: number }
+  ) => {
+    setItems((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, text: newText, ...updates } : item))
+    );
+  };
+
+  //Fill更新
+  const changeColor = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const tr = transformerRef.current;
+    if (!tr) return;
+    const node = tr.nodes()[0] as Konva.Shape | undefined;
+    if (node) {
+      node?.fill(e.target.value);
+      node?.getLayer()?.batchDraw();
+      setFillColor(e.target.value);
+    } else {
+      setFillColor(e.target.value);
+    }
+  };
+
+  //フォントサイズ更新
+  const changeFontSize = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = Number(e.target.value);
+    const tr = transformerRef.current;
+    if (!tr) return;
+    const node = tr.nodes()[0];
+    setFontSize(value);
+
+    if (node instanceof Konva.Text) {
+      node?.fontSize(value);
+      node?.getLayer()?.batchDraw();
+    }
+  };
+
+  return {
+    onPointerDown,
+    onPointerMove,
+    onPointerUp,
+    handleDragEnd,
+    onShapeClick,
+    updateText,
+    changeColor,
+    changeFontSize,
+  };
+}

@@ -26,6 +26,20 @@ export type ToolbarProps = {
   onFontSizeChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
 };
 
+export interface UseStageHandlersProps {
+  action: string;
+  items: StageItem[];
+  setItems: React.Dispatch<React.SetStateAction<StageItem[]>>;
+  setAction: React.Dispatch<React.SetStateAction<string>>;
+  setFillColor: React.Dispatch<React.SetStateAction<string>>;
+  setFontSize: React.Dispatch<React.SetStateAction<number>>;
+  fillColor: string;
+  fontSize: number;
+  isStageFocused: boolean;
+  stageRef: React.RefObject<Konva.Stage | null>;
+  transformerRef: React.RefObject<Konva.Transformer | null>;
+}
+
 export type CanvasStageProps = {
   items: StageItem[];
   setIsStageFocused: (isFocused: boolean) => void;
